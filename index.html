@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Half-Life · Станция Лайт</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#111;color:#eee;font:16px system-ui;text-align:center}
+main{max-width:960px;margin:auto;padding:16px}h1{font-size:22px;margin:8px}
+#screen{width:100%;max-width:800px;aspect-ratio:4/3;object-fit:contain;image-rendering:pixelated;background:#050505;border:1px solid #555;touch-action:none}
+button{background:#292929;color:#fff;border:1px solid #666;border-radius:8px;padding:12px;min-width:64px;touch-action:none;font:inherit}
+nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px}small{color:#bbb}#status{min-height:24px}
+#audio-controls{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:14px 0}
+#volume{width:220px;max-width:60vw;accent-color:#ed8b32}#audio-state{font-size:14px;min-height:20px;color:#bbb}
+</style>
+<main>
+  <h1>Half-Life на Станции Лайт</h1>
+  <p id="status">Подключаемся к экрану колонки…</p>
+  <img id="screen" draggable="false" alt="Экран Half-Life, отрисованный на колонке">
+  <div id="audio-controls">
+    <label for="volume">Звук колонки</label>
+    <input id="volume" type="range" min="0" max="100" step="1" value="0" disabled>
+    <output id="volume-value" for="volume">0%</output>
+    <button id="mute" disabled>Выключить звук</button>
+  </div>
+  <p id="audio-state" role="status">Проверяем громкость…</p>
+  <nav>
+    <button data-key="w">Вперёд</button><button data-key="s">Назад</button>
+    <button data-key="a">Влево</button><button data-key="d">Вправо</button>
+    <button data-key="space">Прыжок</button><button data-key="Control_L">Присесть</button>
+    <button data-key="e">Использовать</button><button data-key="r">Перезарядка</button>
+    <button data-button="1">Огонь</button><button data-button="3">Альт. огонь</button>
+    <button data-key="Escape">Меню</button>
+  </nav>
+  <button id="look">Захватить мышь для обзора</button>
+  <p><small>Клавиатура: WASD, мышь — осмотр и стрельба, E — использовать, Ctrl — присесть, Space — прыжок, R — перезарядка, Esc — меню. На Станции доступны её физические кнопки.</small></p>
+  <p><small>Игра работает локально на колонке. Браузер только передаёт картинку и управление.</small></p>
+</main>
+<script>
+const screen=document.querySelector('#screen'),status=document.querySelector('#status');
+const volume=document.querySelector('#volume'),volumeValue=document.querySelector('#volume-value'),mute=document.querySelector('#mute'),audioState=document.querySelector('#audio-state');
+let audioPending=null,audioSending=false,audioRevision=0;
+function showAudio(state){volume.value=state.volume;volumeValue.textContent=state.volume+'%';volume.disabled=false;mute.disabled=state.muted;audioState.textContent=state.muted?'Звук выключен · при запуске громкость всегда 0%':'Звук из колонки · при запуске громкость всегда 0%'}
+async function audioRequest(path,method='GET'){const r=await fetch(path,{method,cache:'no-store'});if(!r.ok)throw Error('Audio control unavailable');return r.json()}
+async function syncAudio(){if(audioSending||audioPending!==null)return;const revision=audioRevision;try{const state=await audioRequest('/audio');if(revision===audioRevision)showAudio(state)}catch{if(revision===audioRevision&&!audioSending){audioState.textContent='Не удалось проверить громкость';volume.disabled=true;mute.disabled=true}}}
+async function drainAudio(){if(audioSending)return;audioSending=true;try{while(audioPending!==null){const value=audioPending;audioPending=null;const state=await audioRequest('/audio?volume='+value,'POST');if(audioPending===null)showAudio(state)}}catch{audioPending=null;audioState.textContent='Не удалось изменить громкость';volume.disabled=true;mute.disabled=true}finally{audioSending=false}}
+function changeVolume(value){audioRevision++;audioPending=value;volumeValue.textContent=value+'%';audioState.textContent='Меняем громкость…';mute.disabled=false;drainAudio()}
+volume.oninput=()=>changeVolume(Number(volume.value));mute.onclick=()=>changeVolume(0);
+syncAudio();setInterval(syncAudio,2000);
+let queue=Promise.resolve(),motion=null,delivered=0,deliveredAt=performance.now(),viewerFps=0;
+const held=new Set();
+function send(q){queue=queue.then(()=>fetch('/input?'+new URLSearchParams(q),{cache:'no-store'})).catch(()=>{});return queue}
+function heldInput(q,down){const id=q.key?'k:'+q.key:'b:'+q.button;down?held.add(id):held.delete(id);send({...q,down:down?1:0})}
+setInterval(()=>{if(motion){const q=motion;motion=null;send(q)}},33);
+async function frame(){let url;const t=performance.now();try{const r=await fetch('/frame.png?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();url=URL.createObjectURL(await r.blob());await new Promise((ok,bad)=>{screen.onload=ok;screen.onerror=bad;screen.src=url});delivered++;const now=performance.now();if(now-deliveredAt>=1000){viewerFps=delivered*1000/(now-deliveredAt);delivered=0;deliveredAt=now}status.textContent=`Экран Станции · 320 × 240 · передача ${viewerFps.toFixed(1)} кадр/с`}catch{status.textContent='Ждём изображение от Xash3D…'}finally{if(url)URL.revokeObjectURL(url);setTimeout(frame,Math.max(0,1000/30-(performance.now()-t)))}}
+frame();
+for(const b of document.querySelectorAll('[data-key],[data-button]')){const q=b.dataset.key?{type:'key',key:b.dataset.key}:{type:'button',button:b.dataset.button};b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);heldInput(q,true)};b.onpointerup=()=>heldInput(q,false);b.onpointercancel=()=>heldInput(q,false)}
+const keys={Space:'space',Escape:'Escape',ShiftLeft:'Shift_L',ShiftRight:'Shift_R',ControlLeft:'Control_L',ControlRight:'Control_R',Enter:'Return',Backspace:'BackSpace',Tab:'Tab',F3:'F3',F5:'F5',F9:'F9',Backquote:'grave'};
+for(let i=0;i<26;i++)keys['Key'+String.fromCharCode(65+i)]=String.fromCharCode(97+i);for(let i=0;i<10;i++)keys['Digit'+i]=''+i;
+onkeydown=e=>{if(e.target.closest('#audio-controls'))return;if(keys[e.code]){e.preventDefault();if(!e.repeat)heldInput({type:'key',key:keys[e.code]},true)}};
+onkeyup=e=>{if(e.target.closest('#audio-controls')&&!held.has('k:'+keys[e.code]))return;if(keys[e.code])heldInput({type:'key',key:keys[e.code]},false)};
+onblur=()=>{held.clear();motion=null;send({type:'reset'})};
+screen.onpointermove=e=>{if(document.pointerLockElement===screen){if(!motion||motion.type!=='look')motion={type:'look',dx:0,dy:0};motion.dx+=e.movementX;motion.dy+=e.movementY}else{const r=screen.getBoundingClientRect();motion={type:'move',x:Math.floor((e.clientX-r.left)*320/r.width),y:Math.floor((e.clientY-r.top)*240/r.height)}}};
+screen.onpointerdown=e=>{e.preventDefault();if(e.button===0)screen.requestPointerLock();heldInput({type:'button',button:e.button===2?3:e.button===1?2:1},true)};
+screen.onpointerup=e=>heldInput({type:'button',button:e.button===2?3:e.button===1?2:1},false);
+screen.oncontextmenu=e=>e.preventDefault();document.querySelector('#look').onclick=()=>screen.requestPointerLock();
+</script>
+</html>

@@ -1,0 +1,22 @@
+{
+  "maps": 103,
+  "textures": 10143,
+  "navigation_graphs": 89,
+  "pcm_original": 312,
+  "mp3_decoded": 2230,
+  "max_duration_error_ms": 4.172335600907029,
+  "scope": "Host structural and decoder checks; Station saved-scene rendering and browser input verified; full campaign not tested",
+  "light_bits": 5,
+  "visual_variant": "compact-color-v5",
+  "maps_with_lighting_checked": 103,
+  "image_sha256": "5f1ed7406cfea806eb5436cfe73972e3c60dcb17dfd1eda0e685c71c9e52b9eb",
+  "files_extracted_identical": 3889,
+  "required_ui_wads_preserved": 5,
+  "image_bytes": 60817408,
+  "target_image_sha256_matches": true,
+  "target_saved_scene_loaded": true,
+  "browser_smoke_passed": true,
+  "audio_disabled": true,
+  "target_flash_available_kib": 4632,
+  "target_frame": "color-after.png"
+}

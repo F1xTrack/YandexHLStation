@@ -1,0 +1,7 @@
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR armv7)
+set(STATION_TC "${CMAKE_CURRENT_LIST_DIR}/toolchains/gcc-arm-9.2-2019.12-x86_64-arm-none-linux-gnueabihf")
+set(CMAKE_C_COMPILER "${STATION_TC}/bin/arm-none-linux-gnueabihf-gcc")
+set(CMAKE_CXX_COMPILER "${STATION_TC}/bin/arm-none-linux-gnueabihf-g++")
+set(CMAKE_C_FLAGS_INIT "-march=armv7-a -mtune=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard")
+set(CMAKE_CXX_FLAGS_INIT "-march=armv7-a -mtune=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard")

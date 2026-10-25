@@ -1,0 +1,167 @@
+diff --git a/engine/client/soundlib/snd_mp3.c b/engine/client/soundlib/snd_mp3.c
+index ef1dbe88..cd0eabf2 100644
+--- a/engine/client/soundlib/snd_mp3.c
++++ b/engine/client/soundlib/snd_mp3.c
+@@ -368,7 +368,7 @@ qboolean Sound_LoadMPG( const char *name, const byte *buffer, fs_offset_t filesi
+ 	wavinfo_t	sc;
+ 
+ 	// load the file
+-	if( !buffer || filesize < FRAME_SIZE )
++	if( !buffer || filesize < 4 )
+ 		return false;
+ 
+ 	// couldn't create decoder
+@@ -378,7 +378,8 @@ qboolean Sound_LoadMPG( const char *name, const byte *buffer, fs_offset_t filesi
+ 	if( ret ) Con_DPrintf( S_ERROR "%s\n", get_error( mpeg ));
+ 
+ 	// trying to read header
+-	if( !feed_mpeg_header( mpeg, buffer, FRAME_SIZE, filesize, &sc ))
++	const int header_size = Q_min( filesize, FRAME_SIZE );
++	if( !feed_mpeg_header( mpeg, buffer, header_size, filesize, &sc ))
+ 	{
+ 		Con_DPrintf( S_ERROR "%s: failed to load (%s): %s\n", __func__, name, get_error( mpeg ));
+ 		close_decoder( mpeg );
+@@ -390,7 +391,7 @@ qboolean Sound_LoadMPG( const char *name, const byte *buffer, fs_offset_t filesi
+ 	sound.width = 2; // always 16-bit PCM
+ 	sound.size = (int64_t)sound.channels * sound.rate * sound.width * sc.playtime / 1000; // in bytes
+ 	padsize = sound.size % FRAME_SIZE;
+-	pos += FRAME_SIZE; // evaluate pos
++	pos += header_size; // input actually fed, including short compressed effects
+ 
+ 	if( !Sound_ParseID3Tag( buffer, filesize ))
+ 	{
+diff --git a/engine/client/soundlib/snd_wav.c b/engine/client/soundlib/snd_wav.c
+index da944a2f..c4d04ee5 100644
+--- a/engine/client/soundlib/snd_wav.c
++++ b/engine/client/soundlib/snd_wav.c
+@@ -302,13 +302,6 @@ qboolean Sound_LoadWAV( const char *name, const byte *buffer, fs_offset_t filesi
+ 	{
+ 		int	hdr_size = (iff_dataPtr - buffer);
+ 
+-		if(( filesize - hdr_size ) < FRAME_SIZE )
+-		{
+-			sound.tempbuffer = (byte *)Mem_Realloc( host.soundpool, sound.tempbuffer, FRAME_SIZE );
+-			memcpy( sound.tempbuffer, buffer + (iff_dataPtr - buffer), filesize - hdr_size );
+-			return Sound_LoadMPG( name, sound.tempbuffer, FRAME_SIZE );
+-		}
+-
+ 		return Sound_LoadMPG( name, buffer + hdr_size, filesize - hdr_size );
+ 	}
+ 
+diff --git a/engine/common/mod_bmodel.c b/engine/common/mod_bmodel.c
+index d1fe48e2..4258b6e5 100644
+--- a/engine/common/mod_bmodel.c
++++ b/engine/common/mod_bmodel.c
+@@ -2879,6 +2879,13 @@ static void Mod_LoadTextureData( model_t *mod, dbspmodel_t *bmod, int textureInd
+ #if !XASH_DEDICATED
+ 			if( !Host_IsDedicated( ) && pic != NULL )
+ 			{
++				// Compact Station WADs keep small pixels on flash, while BSP
++				// dimensions retain the original projection and lightmap scale.
++				// The software surface cache needs pixels at that logical size.
++				const char *upscale = getenv( "XASH_STATION_TEXTURE_UPSCALE" );
++				if( upscale && upscale[0] == '1' &&
++					( pic->width != mipTex.width || pic->height != mipTex.height ))
++					Image_Process( &pic, mipTex.width, mipTex.height, IMAGE_FORCE_RGBA | IMAGE_RESAMPLE, 0.0f );
+ 				Image_SetForceFlags( texture_force_flags );
+ 				texture->gl_texturenum = ref.dllFuncs.GL_LoadTextureFromBuffer( texpath, pic, txFlags, false );
+ 				FS_FreeImage( pic );
+diff --git a/engine/common/soundlib/snd_utils.c b/engine/common/soundlib/snd_utils.c
+index 19a74e2b..ec776053 100644
+--- a/engine/common/soundlib/snd_utils.c
++++ b/engine/common/soundlib/snd_utils.c
+@@ -102,6 +102,36 @@ uint GAME_EXPORT Sound_GetApproxWavePlayLen( const char *filepath )
+ 	// magic number from GoldSrc, seems to be header size
+ 	size_t filesize = FS_FileLength( f ) - 128;
+ 
++	// Compact Station sounds retain their original sample count in the standard
++	// WAV fact chunk. Compressed byte size cannot describe dialogue duration.
++	if( wav.riff_id == LittleLong( RIFFHEADER ) && wav.wave_id == LittleLong( WAVEHEADER )
++		&& LittleShort( wav.wFormatTag ) == 85 && LittleLong( wav.nSamplesPerSec ) > 0 )
++	{
++		const fs_offset_t length = FS_FileLength( f );
++		fs_offset_t position = 12;
++		while( position <= length - 8 )
++		{
++			chunkhdr_t chunk;
++			FS_Seek( f, position, SEEK_SET );
++			if( FS_Read( f, &chunk, sizeof( chunk )) != sizeof( chunk ))
++				break;
++			const uint32_t size = (uint32_t)LittleLong( chunk.dLen );
++			if( size > length - position - 8 )
++				break;
++			if( !memcmp( &chunk.data_id, "fact", 4 ) && size >= 4 )
++			{
++				uint32_t frames;
++				if( FS_Read( f, &frames, sizeof( frames )) == sizeof( frames ))
++				{
++					const uint msecs = (uint)((uint64_t)(uint32_t)LittleLong( frames ) * 1000 / LittleLong( wav.nSamplesPerSec ));
++					FS_Close( f );
++					return msecs;
++				}
++			}
++			position += 8 + (fs_offset_t)size + (size & 1);
++		}
++	}
++
+ 	FS_Close( f );
+ 
+ 	// is real wav file ?
+diff --git a/engine/platform/sdl2/s_sdl2.c b/engine/platform/sdl2/s_sdl2.c
+index d216f6cd..aabbc545 100644
+--- a/engine/platform/sdl2/s_sdl2.c
++++ b/engine/platform/sdl2/s_sdl2.c
+@@ -126,6 +126,9 @@ qboolean SNDDMA_Init( void )
+ 		.callback = SDL_SoundCallback,
+ 	};
+ 
++	// Give the Station's software renderer room for brief frame stalls.
++	if( SDL_getenv( "XASH_STATION_AUDIO_BUFFER" ))
++		desired.samples = 2048;
+ 	sdl_dev = SDL_OpenAudioDevice( NULL, 0, &desired, &obtained, 0 );
+ 
+ 	if( SDLash_IsAudioError( sdl_dev ))
+diff --git a/ref/soft/r_glblit.c b/ref/soft/r_glblit.c
+index d3a78a10..a04b7285 100644
+--- a/ref/soft/r_glblit.c
++++ b/ref/soft/r_glblit.c
+@@ -341,7 +341,7 @@ static void R_BuildScreenMap( void )
+ {
+ 	uint rshift = FIRST_BIT( swblit.rmask ), gshift = FIRST_BIT( swblit.gmask ), bshift = FIRST_BIT( swblit.bmask );
+ 	uint rbits = COUNT_BITS( swblit.rmask ), gbits = COUNT_BITS( swblit.gmask ), bbits = COUNT_BITS( swblit.bmask );
+-	uint rmult = BIT( rbits ), gmult = BIT( gbits ), bmult = BIT( bbits );
++	uint rmult = MASK( rbits ), gmult = MASK( gbits ), bmult = MASK( bbits );
+ 	uint rdiv = MASK( 5 ), gdiv = MASK( 6 ), bdiv = MASK( 5 );
+ 
+ 	gEngfuncs.Con_Printf( "Blit table: %d %d %d %d %d %d\n", rmult, gmult, bmult, rdiv, gdiv, bdiv );
+@@ -375,7 +375,7 @@ static void R_BuildScreenMap( void )
+ 		g = (( i >> ( 8 - 3 - 3 )) << 3 ) & MASK( 6 );
+ 		b = (( i >> ( 8 - 3 - 3 - 2 )) << 3 ) & MASK( 5 );
+ 		// major = r << (6 + 5) | (g << 5) | b;
+-		major = ( r * rmult / rdiv ) << rshift | ( g * gmult / gdiv ) << gshift | ( b * bmult / bdiv ) << bshift;
++		major = ( r << 11 ) | ( g << 5 ) | b;
+ 
+ 
+ 		for( j = 0; j < 256; j++ )
+@@ -386,12 +386,18 @@ static void R_BuildScreenMap( void )
+ 			g = MOVE_BIT( j, 7, 2 ) | MOVE_BIT( j, 4, 1 ) | MOVE_BIT( j, 1, 0 );
+ 			b = MOVE_BIT( j, 6, 2 ) | MOVE_BIT( j, 3, 1 ) | MOVE_BIT( j, 0, 0 );
+ 			// vid.screen[(i<<8)|j] = r << (6 + 5) | (g << 5) | b | major;
+-			minor = ( r * rmult / rdiv ) << rshift | ( g * gmult / gdiv ) << gshift | ( b * bmult / bdiv ) << bshift;
++			// Reassemble RGB565 before scaling. Separately scaled high/low
++			// parts overlap in RGB888; OR then distorts shades and channel maxima.
++			minor = ( r << 11 ) | ( g << 5 ) | b;
++			uint rgb = major | minor;
++			uint pixel = ((( rgb >> 11 ) & rdiv ) * rmult / rdiv ) << rshift |
++				((( rgb >> 5 ) & gdiv ) * gmult / gdiv ) << gshift |
++				(( rgb & bdiv ) * bmult / bdiv ) << bshift;
+ 
+ 			if( swblit.bpp == 2 )
+-				vid.screen[( i << 8 ) | j] = major | minor;
++				vid.screen[( i << 8 ) | j] = pixel;
+ 			else
+-				vid.screen32[( i << 8 ) | j] = major | minor;
++				vid.screen32[( i << 8 ) | j] = pixel;
+ 
+ 		}
+ 

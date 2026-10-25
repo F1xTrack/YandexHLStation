@@ -1,0 +1,27 @@
+{
+  "title": "Half-Life \u00b7 \u0421\u0442\u0430\u043d\u0446\u0438\u044f \u041b\u0430\u0439\u0442",
+  "status": "\u042d\u043a\u0440\u0430\u043d \u0421\u0442\u0430\u043d\u0446\u0438\u0438 \u00b7 320 \u00d7 240 \u00b7 \u043f\u0435\u0440\u0435\u0434\u0430\u0447\u0430 11.2 \u043a\u0430\u0434\u0440/\u0441",
+  "width": 320,
+  "height": 240,
+  "held": [],
+  "station": {
+    "renderer": "Station ARM32 software",
+    "game": "Half-Life",
+    "game_running": true,
+    "width": 320,
+    "height": 240,
+    "frames_sent": 1594,
+    "web_pid": 3138
+  },
+  "javascript_errors": [],
+  "inputs": [
+    {
+      "url": "http://192.168.1.31:12081/input?type=key&key=w&down=1",
+      "status": 200
+    },
+    {
+      "url": "http://192.168.1.31:12081/input?type=key&key=w&down=0",
+      "status": 200
+    }
+  ]
+}

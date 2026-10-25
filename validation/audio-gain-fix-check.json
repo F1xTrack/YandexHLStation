@@ -1,0 +1,30 @@
+{
+  "cause": "Old Master is user-created and bypassed by direct PCM; TAS digital gain remained 0 dB",
+  "legacy_control": {
+    "name": "Master Playback Volume",
+    "user_created": true
+  },
+  "active_control": {
+    "name": "TAS5805M Digital Playback Volume",
+    "user_created": false,
+    "channels": 1,
+    "zero_raw": 0,
+    "one_percent_raw": 87,
+    "one_percent_db": -60,
+    "maximum_raw": 207,
+    "maximum_db": 0
+  },
+  "on_target_verified": {
+    "one_percent": {
+      "raw": 87,
+      "output_switch": "on,on"
+    },
+    "zero_percent": {
+      "raw": 0,
+      "output_switch": "off,off"
+    }
+  },
+  "all_100_positions_roundtrip": true,
+  "game_restarted": false,
+  "acoustic_measurement": false
+}
