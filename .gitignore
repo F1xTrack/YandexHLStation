@@ -23,3 +23,13 @@ __pycache__/
 build-*/
 station-web-armhf
 squashfuse_ll-armhf
+
+/toolchains
+/deps-armhf
+/sdl2-armhf
+/SDL2-2.32.10
+/xash3d-fwgs
+/hlsdk-portable
+/fuse-2.9.9
+/xz-5.2.5
+/squashfuse-0.6.5
